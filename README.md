@@ -26,6 +26,8 @@ This plugin uses the same configuration file as jWormhole client. Add the follow
 `$HOME/.jwormhole/client.properties`, uncomment lines and edit as necessary.
 
 ```
+jwormhole.client.console.commandHandlers = com.bradchen.jwormhole.mailer.MailCommandHandler
+
 # SMTP server login details
 #jwormhole.mailer.server =
 #jwormhole.mailer.port = 25
