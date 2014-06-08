@@ -1,5 +1,6 @@
 package com.bradchen.jwormhole.mailer;
 
+import au.com.bytecode.opencsv.CSVReader;
 import com.bradchen.jwormhole.client.Client;
 import com.bradchen.jwormhole.client.console.CommandHandler;
 import org.apache.commons.io.IOUtils;
@@ -16,8 +17,10 @@ import javax.mail.Transport;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.nio.charset.Charset;
@@ -26,24 +29,42 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
+import static com.bradchen.jwormhole.client.SettingsUtils.readSettingsFromClassPathResource;
+
 public class MailCommandHandler implements CommandHandler {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(MailCommandHandler.class);
+
+	// in class path
+	private static final String DEFAULT_SETTINGS_FILE = "mailer.default.properties";
 	private static final String SMTP = "smtp";
 	private static final String SMTPS = "smtps";
 	private static final Charset UTF8_CHARSET = Charset.forName("utf-8");
 	private static final String HTML_CONTENT_TYPE = "text/html; charset=" + UTF8_CHARSET.name();
 
 	private final List<String> recipients;
-	private final MailerSettings settings;
-	private final Session session;
+	private MailerSettings settings;
+	private Session session;
 	private String subject;
 	private String templateUrl;
 
-	public MailCommandHandler(MailerSettings settings) {
-		this.settings = settings;
-		this.session = createSession(settings);
+	public MailCommandHandler() {
 		this.recipients = new ArrayList<>();
+	}
+
+	@Override
+	public void configure(Properties overrideSettings, String server) {
+		this.settings = new MailerSettings(getDefaultSettings(), overrideSettings);
+		this.session = createSession(settings);
+	}
+
+	private static Properties getDefaultSettings() {
+		try {
+			return readSettingsFromClassPathResource(MailCommandHandler.class.getClassLoader(),
+				DEFAULT_SETTINGS_FILE);
+		} catch (IOException exception) {
+			throw new RuntimeException(exception);
+		}
 	}
 
 	@Override
@@ -51,19 +72,34 @@ public class MailCommandHandler implements CommandHandler {
 		List<String> hints = new ArrayList<>();
 		hints.add("mail <subject> <template-url> <recipient> to send mail");
 		if ((subject != null) && (templateUrl != null) && !recipients.isEmpty()) {
-			hints.add("rs to resend last mail");
+			hints.add("rs to resend the last mail");
 		}
 		return hints;
 	}
 
 	@Override
 	public boolean handle(Client client, String command) {
-		String[] tokens = command.split(" ");
+		InputStream in = new ByteArrayInputStream(command.getBytes(UTF8_CHARSET));
+		CSVReader reader = new CSVReader(new InputStreamReader(in), ' ');
+		String[] tokens;
+		try {
+			tokens = reader.readNext();
+			if (tokens == null) {
+				LOGGER.warn("Unable to parse command.");
+				return false;
+			}
+		} catch (IOException exception) {
+			LOGGER.warn("Unable to parse command.", exception);
+			return false;
+		} finally {
+			IOUtils.closeQuietly(reader);
+		}
+
 		if ("mail".equals(tokens[0]) && (tokens.length == 4)) {
-			subject = tokens[1];
-			templateUrl = tokens[2];
+			subject = trimQuotes(tokens[1]);
+			templateUrl = trimQuotes(tokens[2]);
 			recipients.clear();
-			recipients.addAll(Arrays.asList(tokens[3].split(",")));
+			recipients.addAll(Arrays.asList(trimQuotes(tokens[3]).split(",")));
 			sendMail();
 			return true;
 		}
@@ -73,6 +109,10 @@ public class MailCommandHandler implements CommandHandler {
 			return true;
 		}
 		return false;
+	}
+
+	private static String trimQuotes(String str) {
+		return str.trim().replaceAll("^\"|\"$", "");
 	}
 
 	private void sendMail() {
