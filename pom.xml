@@ -73,6 +73,7 @@
 			<groupId>com.bradchen.jwormhole</groupId>
 			<artifactId>client</artifactId>
 			<version>${project.version}</version>
+			<scope>provided</scope>
 		</dependency>
 
 		<!-- Mailing -->
