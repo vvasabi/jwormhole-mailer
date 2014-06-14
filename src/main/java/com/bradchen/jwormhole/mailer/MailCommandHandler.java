@@ -95,7 +95,12 @@ public class MailCommandHandler implements CommandHandler {
 			IOUtils.closeQuietly(reader);
 		}
 
-		if ("mail".equals(tokens[0]) && (tokens.length == 4)) {
+		if ("mail".equals(tokens[0])) {
+			if (tokens.length != 4) {
+				System.err.println("Usage: mail <subject> <template-url> <recipient>");
+				return true;
+			}
+
 			subject = trimQuotes(tokens[1]);
 			templateUrl = trimQuotes(tokens[2]);
 			recipients.clear();
@@ -104,7 +109,15 @@ public class MailCommandHandler implements CommandHandler {
 			return true;
 		}
 
-		if ("rs".equals(tokens[0]) && (tokens.length == 1)) {
+		if ("rs".equals(tokens[0])) {
+			if ((tokens.length != 1) && (tokens.length != 2)) {
+				System.err.println("Usage: rs [recipient]");
+				return true;
+			}
+			if (tokens.length == 2) {
+				recipients.clear();
+				recipients.addAll(Arrays.asList(trimQuotes(tokens[1]).split(",")));
+			}
 			sendMail();
 			return true;
 		}
