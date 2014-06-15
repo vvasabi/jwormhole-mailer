@@ -26,7 +26,7 @@ This plugin uses the same configuration file as jWormhole client. Add the follow
 `$HOME/.jwormhole/client.properties`, uncomment lines and edit as necessary.
 
 ```
-jwormhole.client.console.commandHandlers = com.bradchen.jwormhole.mailer.MailCommandHandler
+jwormhole.client.console.plugins = com.bradchen.jwormhole.mailer.MailerConsolePlugin
 
 # SMTP server login details
 #jwormhole.mailer.server =
@@ -50,7 +50,7 @@ for more details), and issue the following command to send out an email:
 mail "subject line" http://localhost/path/to/email.html recipient@example.com
 ```
 
-To resend an email, issue `rs`.
+To resend an email, issue `resend`.
 
 
 ## License

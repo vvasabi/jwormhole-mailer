@@ -82,12 +82,5 @@
 			<artifactId>mail</artifactId>
 			<version>1.4.7</version>
 		</dependency>
-
-		<!-- Used to Parse Commands -->
-		<dependency>
-			<groupId>net.sf.opencsv</groupId>
-			<artifactId>opencsv</artifactId>
-			<version>2.3</version>
-		</dependency>
 	</dependencies>
 </project>

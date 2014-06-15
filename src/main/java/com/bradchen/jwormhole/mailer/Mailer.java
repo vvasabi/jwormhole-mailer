@@ -1,8 +1,5 @@
 package com.bradchen.jwormhole.mailer;
 
-import au.com.bytecode.opencsv.CSVReader;
-import com.bradchen.jwormhole.client.Client;
-import com.bradchen.jwormhole.client.console.CommandHandler;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -17,118 +14,61 @@ import javax.mail.Transport;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 
-import static com.bradchen.jwormhole.client.SettingsUtils.readSettingsFromClassPathResource;
+public final class Mailer {
 
-public class MailCommandHandler implements CommandHandler {
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(MailCommandHandler.class);
-
-	// in class path
-	private static final String DEFAULT_SETTINGS_FILE = "mailer.default.properties";
+	private static final Logger LOGGER = LoggerFactory.getLogger(Mailer.class);
 	private static final String SMTP = "smtp";
 	private static final String SMTPS = "smtps";
 	private static final Charset UTF8_CHARSET = Charset.forName("utf-8");
 	private static final String HTML_CONTENT_TYPE = "text/html; charset=" + UTF8_CHARSET.name();
 
+	private final MailerSettings settings;
+	private final Session session;
 	private final List<String> recipients;
-	private MailerSettings settings;
-	private Session session;
 	private String subject;
 	private String templateUrl;
 
-	public MailCommandHandler() {
+	public Mailer(MailerSettings settings) {
+		this.settings = settings;
+		this.session = createSession(settings);
 		this.recipients = new ArrayList<>();
 	}
 
-	@Override
-	public void configure(Properties overrideSettings, String server) {
-		this.settings = new MailerSettings(getDefaultSettings(), overrideSettings);
-		this.session = createSession(settings);
+	public String getSubject() {
+		return subject;
 	}
 
-	private static Properties getDefaultSettings() {
-		try {
-			return readSettingsFromClassPathResource(MailCommandHandler.class.getClassLoader(),
-				DEFAULT_SETTINGS_FILE);
-		} catch (IOException exception) {
-			throw new RuntimeException(exception);
-		}
+	public String getTemplateUrl() {
+		return templateUrl;
 	}
 
-	@Override
-	public List<String> getCommandHints() {
-		List<String> hints = new ArrayList<>();
-		hints.add("mail <subject> <template-url> <recipient> to send mail");
-		if ((subject != null) && (templateUrl != null) && !recipients.isEmpty()) {
-			hints.add("rs to resend the last mail");
-		}
-		return hints;
+	public List<String> getRecipients() {
+		return Collections.unmodifiableList(recipients);
 	}
 
-	@Override
-	public boolean handle(Client client, String command) {
-		InputStream in = new ByteArrayInputStream(command.getBytes(UTF8_CHARSET));
-		CSVReader reader = new CSVReader(new InputStreamReader(in), ' ');
-		String[] tokens;
-		try {
-			tokens = reader.readNext();
-			if (tokens == null) {
-				LOGGER.warn("Unable to parse command.");
-				return false;
-			}
-		} catch (IOException exception) {
-			LOGGER.warn("Unable to parse command.", exception);
-			return false;
-		} finally {
-			IOUtils.closeQuietly(reader);
-		}
-
-		if ("mail".equals(tokens[0])) {
-			if (tokens.length != 4) {
-				System.err.println("Usage: mail <subject> <template-url> <recipient>");
-				return true;
-			}
-
-			subject = trimQuotes(tokens[1]);
-			templateUrl = trimQuotes(tokens[2]);
-			recipients.clear();
-			recipients.addAll(Arrays.asList(trimQuotes(tokens[3]).split(",")));
-			sendMail();
-			return true;
-		}
-
-		if ("rs".equals(tokens[0])) {
-			if ((tokens.length != 1) && (tokens.length != 2)) {
-				System.err.println("Usage: rs [recipient]");
-				return true;
-			}
-			if (tokens.length == 2) {
-				recipients.clear();
-				recipients.addAll(Arrays.asList(trimQuotes(tokens[1]).split(",")));
-			}
-			sendMail();
-			return true;
-		}
-		return false;
+	public void sendMail(String subject, String templateUrl, List<String> recipients) {
+		this.subject = subject;
+		this.templateUrl = templateUrl;
+		sendMail(recipients);
 	}
 
-	private static String trimQuotes(String str) {
-		return str.trim().replaceAll("^\"|\"$", "");
+	public void sendMail(List<String> recipients) {
+		this.recipients.clear();
+		this.recipients.addAll(recipients);
+		sendMail();
 	}
 
-	private void sendMail() {
+	public void sendMail() {
 		String template = downloadTemplateFile();
 		if (template == null) {
 			return;
@@ -193,7 +133,7 @@ public class MailCommandHandler implements CommandHandler {
 			String protocol = settings.isSmtps() ? SMTPS : SMTP;
 			Transport transport = session.getTransport(protocol);
 			transport.connect(settings.getServer(), settings.getPort(), settings.getUsername(),
-				settings.getPassword());
+					settings.getPassword());
 			return transport;
 		} catch (AuthenticationFailedException exception) {
 			throw exception;
@@ -213,16 +153,6 @@ public class MailCommandHandler implements CommandHandler {
 		}
 	}
 
-	private static Session createSession(MailerSettings settings) {
-		String protocol = settings.isSmtps() ? SMTPS : SMTP;
-		boolean auth = StringUtils.isNotBlank(settings.getUsername())
-				|| StringUtils.isNotBlank(settings.getPassword());
-		Properties properties = new Properties();
-		properties.put("mail." + protocol + ".auth", auth);
-		properties.put("mail." + protocol + ".starttls.enable", settings.isStartTlsEnabled());
-		return Session.getDefaultInstance(properties);
-	}
-
 	private static void closeTransportQuietly(Transport transport) {
 		if (transport == null) {
 			return;
@@ -231,6 +161,16 @@ public class MailCommandHandler implements CommandHandler {
 			transport.close();
 		} catch (MessagingException ignored) {
 		}
+	}
+
+	private static Session createSession(MailerSettings settings) {
+		String protocol = settings.isSmtps() ? SMTPS : SMTP;
+		boolean auth = StringUtils.isNotBlank(settings.getUsername())
+			|| StringUtils.isNotBlank(settings.getPassword());
+		Properties properties = new Properties();
+		properties.put("mail." + protocol + ".auth", auth);
+		properties.put("mail." + protocol + ".starttls.enable", settings.isStartTlsEnabled());
+		return Session.getDefaultInstance(properties);
 	}
 
 }
